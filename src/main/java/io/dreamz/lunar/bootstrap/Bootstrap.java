@@ -25,8 +25,7 @@ public final class Bootstrap implements Opcodes {
         final Commander commander = new Commander(args);
         {
             commander.withDefault("patch", "BungeeCord.jar")
-                    .withDefault("server", "lunar")
-                    .withDefault("script", "start.sh");
+                    .withDefault("server", "lunar");
         }
 
         // parse the flags
@@ -37,11 +36,11 @@ public final class Bootstrap implements Opcodes {
 
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            if (success.get()) {
+            if (success.get() && commander.hasFlag("script")) {
                 System.out.println("JAR file patched. Starting server...");
                 try {
-                    new ProcessBuilder().command(commander.getValue("script")).inheritIO().start();
-                } catch (IOException e) {
+                    new ProcessBuilder().command(commander.getValue("script")).inheritIO().start().waitFor();
+                } catch (IOException | InterruptedException e) {
                     e.printStackTrace();
                 }
             }
@@ -69,18 +68,25 @@ public final class Bootstrap implements Opcodes {
                             reader.accept(node, 0);
                         }
 
+
+                        for (int i = 0; i < node.fields.size(); i++) {
+                            if (node.fields.get(i).name.equals("lcServer")) {
+                                node.fields.remove(node.fields.get(i--));
+                            }
+                        }
                         node.fields.add(new FieldNode(ACC_PRIVATE, "lcServer", "Ljava/lang/String;", null, null));
 
                         for (MethodNode mn : node.methods) {
 
                             if (mn.name.equalsIgnoreCase("<init>")) {
 
+
                                 InsnList insnList = new InsnList();
                                 {
                                     // this.lcServer = "Server Name";
                                     insnList.add(new VarInsnNode(ALOAD, 0));
                                     insnList.add(new LdcInsnNode(server));
-                                    insnList.add(new FieldInsnNode(PUTFIELD, "net/md_5/bungee/api/ServerPing", "lcServer", "L/java/lang/String;"));
+                                    insnList.add(new FieldInsnNode(PUTFIELD, "net/md_5/bungee/api/ServerPing", "lcServer", "Ljava/lang/String;"));
                                 }
 
                                 for (int i = 0; i < mn.instructions.size(); i++) {
@@ -95,10 +101,19 @@ public final class Bootstrap implements Opcodes {
                                         }
                                     }
 
+                                    if (mn.instructions.get(i).getOpcode() == PUTFIELD) {
+                                        if (((FieldInsnNode) mn.instructions.get(i)).name.equalsIgnoreCase("lcServer")) {
+                                            for (int j = 0; j < 3; j++) {
+                                                mn.instructions.remove(mn.instructions.get(i--));
+                                            }
+                                        }
+                                    }
+
                                     // Inject right before the RETURN statement
                                     // We don't need to worry about anything like IRETURN. This is a void function
                                     if (mn.instructions.get(i).getOpcode() == RETURN) {
                                         mn.instructions.insertBefore(mn.instructions.get(i), insnList);
+                                        break;
                                     }
                                 }
                             }
@@ -132,6 +147,7 @@ public final class Bootstrap implements Opcodes {
                     Process process = new ProcessBuilder("jar", "uvf", file.getPath(), f.getPath()).inheritIO().start();
                     process.waitFor();
 
+                    process.destroy();
                     success.set(true);
 
                 } catch (InterruptedException e) {

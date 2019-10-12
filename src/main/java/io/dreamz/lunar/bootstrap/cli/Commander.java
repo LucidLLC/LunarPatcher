@@ -88,6 +88,10 @@ public final class Commander {
     }
 
 
+    public boolean hasFlag(String flag) {
+        return flagReader.hasFlag(flag);
+    }
+
     public void parse() {
         this.flagReader = this.readFlags();
     }
